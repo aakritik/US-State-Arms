@@ -1,0 +1,169 @@
+---
+title: "USA Military Surplus Gear: The 1033 Program "
+author: "Aakriti K"
+date: "Thursday, December 24, 2015"
+output: html_document
+---
+***
+**The Excess Property Program** or 1033 Program was designed by the **US Department of Defense** to provide surplus DoD military equipment to state and local civilian law enforcement agencies for use in counter-narcotics and counter-terrorism operations, and to **enhance officer safety**. This equipment can account for things like planes and helicopters, grenade launchers and assault rifles.
+Through this analysis we are trying to see if there is a correlation between the total acquisition cost incurred **(TAC)** and the impact of these on the criminal activity and law enforcement in different states in the US.Data acquired ranges from 2006 to 2014.
+
+### Data loading and data cleaning activities:
+```{r , warning=FALSE, message=FALSE, tidy=TRUE,fig.align='center', fig.height=7, fig.width=8}
+#Installing all required packages and calling libraries for functions
+#Use library(RCurl) and library(foreign) to get data from raw Github csv file
+library(RCurl)
+library(foreign)
+library(RColorBrewer)
+library(classInt)
+library(OIdata)
+options(scipen = 999)
+url <- "https://raw.githubusercontent.com/ali-ce/datasets/master/US-Military-Gear/State%20Totals%20Comparisons.csv"
+statearms.data<-getURL(url,ssl.verifypeer = FALSE)
+statearms.data<-read.csv(textConnection(statearms.data))
+
+#Removing data where there are NA values to enable more accurate analysis
+e <- statearms.data[complete.cases(statearms.data), ]
+
+#Convert data to a dataframe and check the datatype using class()
+statearms_data<-as.data.frame(e)
+class(statearms_data)
+
+#Remove the row names from the data frame
+row.names(statearms_data)<-NULL
+#Replacing the column names to make names user-friendly
+colnames(statearms_data)[which(names(statearms_data) == "Total.acquisition.cost......2006...2014.")] <- "TAC.Since2006"
+colnames(statearms_data)[which(names(statearms_data) == "Total.acquisition.cost....per.inhabitant.")] <- "TAC.PerInhabitant"
+colnames(statearms_data)[which(names(statearms_data) == "Total.acquisition.cost....per.police.agency.")] <- "TAC.PerAgency"
+colnames(statearms_data)[which(names(statearms_data) == "Total.acquisition.cost....per.inhabitant...Rank.")] <- "TAC.perinhabitant.Rank"
+colnames(statearms_data)[which(names(statearms_data) == "Total.acquisition.cost....per.police.agency...Rank.")] <- "TAC.peragency.Rank"
+colnames(statearms_data)[which(names(statearms_data) == "Police.officers.killed.or.assaulted..2012...per.100.officers...Rank.")] <- "Percent.PoliceOfficers.KilledorAssaulted.2012"
+colnames(statearms_data)[which(names(statearms_data) == "Total.Law.Enforcement.Officers.Killed.or.Assaulted..2012...per.100.police.officers.")] <- "Percent.Totalofficers.KilledorAssualted.2012"
+colnames(statearms_data)[which(names(statearms_data) == "Violent.Crime.Rate")] <- "Crime_Rate"
+colnames(statearms_data)[which(names(statearms_data) == "Number.of.police.agencies")] <- "Total_Agencies"
+colnames(statearms_data)[which(names(statearms_data) == "Police.officers..Full.time...2012.")] <- "Total_Officers"
+colnames(statearms_data)[which(names(statearms_data) == "Law.Enforcement.Felonoiusly.Killed")] <- "Officers_Killed"
+colnames(statearms_data)[which(names(statearms_data) == "Law.Enforcement.Officers.Assaulted")] <- "Officers_Assaulted"
+#Check new column names after renaming
+#names(statearms_data)
+
+#Reordering columns to push back any Factor datatypes
+statearms_data <- statearms_data[c("Total_Officers","Crime_Rate","Total_Agencies",
+                                   "Officers_Killed","Officers_Assaulted","Total.number.of.Items",
+                                   "Average.price.per.item","TAC.Since2006","TAC.PerInhabitant",
+                                   "TAC.perinhabitant.Rank","TAC.PerAgency","TAC.peragency.Rank",
+                                   "Police.officers..per.1.000.inhabitants...Rank.","Police.officers..per.1.000.inhabitants.",
+                                   "X2013.acquisition.cost....per.inhabitant...Rank.",
+                                   "Violent.Crime.Rate..Rank.","Total.Law.Enforcement.Officers.Killed.or.Assaulted..2012.",
+                                   "Percent.Totalofficers.KilledorAssualted.2012","State","Population..2010.Census.",
+                                   "Percent.PoliceOfficers.KilledorAssaulted.2012")]
+
+```
+
+### Plotting activities:
+#### To begin plotting our data we first create a scatter plot matrix
+The scatter plot matrix allows us to study the correlation between multiple variables across states. We can explore the data and the plots we have created to find relations between the variables and find a question that interests us.
+
+```{r, warning=FALSE, message=FALSE, tidy=TRUE,fig.align='center', fig.height=7, fig.width=8}
+pairs(~Crime_Rate+Total_Agencies+Total_Officers+Officers_Killed+Officers_Assaulted,
+      data=statearms_data,
+      main="Effect of Excess Property Program on Crimes against Law Enforcement",
+      col=rgb(28,134,238,85,maxColorValue=255),
+      pch=20,
+      cex=2.5,
+      na.action = na.omit,
+      font.labels = 1,
+      labels=c("Crime Rate","Total Agencies","Total Officers","Officers Killed","Officers Assaulted"), 
+      upper.panel=panel.smooth,
+      lower.panel=panel.smooth)
+```
+
+Post analysis of the trend lines in the above graphs, the most evident observation is the relation of Crime Rate to the number of Law Enforcement agencies. Over the initial surge in total agencies, the crime rate increased marginally. However, over time as a larger group of agencies were created the crime rate lulled and remained almost constant.
+
+#### Building onto the above analysis,we study the trend across states by creating a map that shows the spread of the major variables in all the states.
+We have used color encoding to represent the values in each state. Multiple maps are compared to see if there is a correlation between variables.
+
+```{r, warning=FALSE, message=FALSE, tidy=TRUE,fig.align='center', fig.height=7, fig.width=8}
+#Save the column names in a variable
+col_names<-colnames(statearms_data)
+
+#Create a for loop which iterates through the column names and uses them to produce the maps
+#Removing tail columns for analysis.Selecting first 8 columns to be depicted on maps
+for(i in 1:(length(col_names)-13)){
+ 
+nclr <- 5 # number of bins
+min <- min(statearms_data[,col_names[i]]) # theoretical minimum
+max <- max(statearms_data[,col_names[i]]) # theoretical maximum
+breaks <- (max - min) / nclr
+
+#Use the Blues-Purples palette to represent data on the maps
+plotclr <- brewer.pal(nclr,
+                      "BuPu")
+plotvar <- statearms_data[,col_names[i]]
+max(statearms_data$Crime_Rate)
+
+class <- classIntervals(plotvar,
+                        nclr,
+                        style = "pretty"
+                        #fixedBreaks = seq(min, max, breaks)
+                        )
+
+colcode <- findColours(class,
+                       plotclr)
+
+#Creating the base of the map
+map("state",
+    col = "gray80",
+    fill = TRUE,
+    lty = 0)
+#Adding the data to the map
+map("state",
+    col = colcode,
+    fill = TRUE,
+    lty = 0,
+    add = TRUE)
+title(col_names[i])
+#Adding borders to the different states
+map("state",
+    col = "gray",
+    lwd = 1.4,
+    lty = 1,
+    add = TRUE)
+#Adding a legendText to the plot so the legend data is shown as ranges
+legendText <- c()
+for(i in seq(min, max - (max - min) / nclr, (max - min) / nclr)) {
+  if (i == max(seq(min, max - (max - min) / nclr, (max - min) / nclr))) {
+    legendText <- c(legendText, paste(round(i,3), "\u2264 n \u2264", round(i + (max - min) / nclr,3)))
+  } else
+    legendText <- c(legendText, paste(round(i,3), "\u2264 n <", round(i + (max - min) / nclr,3))) 
+}
+#Adding completed legend to the plot
+legend("bottomleft",
+       legend=legendText,
+       fill = attr(colcode, "palette"),
+       title = col_names[i],
+       cex = 0.70,
+       bty = "n")
+}
+```
+
+To delve deeper into the analysis we have broken down the large data set and checked the correlation between a few parameters. 
+Interestingly, despite Texas,Oklahoma and Arkansas having a greater number of law enforcement officers a higher number of agencies are actually placed in Montana and Minnesota. Additionally, we can analyze the impact of the Excess Property Program on the law enforcement establishments and officers.
+For instance, Minnesota has the maximum death toll of officers. The crime rate is amongst the higher tiers. Although the average acquisition cost is low for Minnesota, the number of items procured are more which leads us to believe the agencies use property such as rifles and grenades which would account for ***less cost-more procurement***. Through our analysis, **Minnesota** can be declared as the most dangerous state for officials with maximum kills and high rate of assaults against officers.  
+```{r, echo=FALSE}
+
+```
+From the above analysis we can explore the data and the plots we have created to find relations between the variables.For instance, we analyzed:
+```{r, echo=FALSE}
+
+```
+#### Riskiest state for officials
+ + High crime rate
+ + Medium assault rate
+ + High death toll  
+```{r, echo=FALSE}
+
+``` 
+#### Best ROI for Law Enforcement Agencies
+ + Decrease in crime rate
+ + Low TAC by the state 
